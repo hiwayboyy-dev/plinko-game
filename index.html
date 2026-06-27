@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plinko Simulator 10,000x</title>
+    <style>
+        body {
+            background-color: #1a1a2e;
+            color: white;
+            font-family: 'Arial', sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
+        h1 { color: #ffdf00; margin-bottom: 5px; }
+        .dashboard {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 15px;
+            font-size: 1.2rem;
+            background: #162447;
+            padding: 10px;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .balance { color: #4ecca3; font-weight: bold; }
+        .controls {
+            margin-bottom: 15px;
+        }
+        input[type="number"] {
+            width: 80px;
+            padding: 8px;
+            font-size: 1rem;
+            border-radius: 5px;
+            border: none;
+            text-align: center;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 0 5px;
+            transition: 0.2s;
+        }
+        .btn-drop { background-color: #e43f5a; color: white; }
+        .btn-auto { background-color: #007bff; color: white; }
+        .btn-auto.active { background-color: #4ecca3; }
+        
+        canvas {
+            background: #0f172a;
+            border-radius: 10px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+            max-width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Plinko Simulator 10,000x</h1>
+    <p style="margin-top:0; color:#bbb;">ทุนเริ่ม 100 ตามบรีฟ มีระบบ Auto ทิ้งลูกรัวๆ!</p>
+
+    <div class="dashboard">
+        <div>เงินทุน: <span id="balance" class="balance">100.00</span></div>
+        <div>ชนะล่าสุด: <span id="last-win" style="color: #4ecca3;">0.00</span></div>
+    </div>
+
+    <div class="controls">
+        <label>เดิมพัน (Bet): </label>
+        <input type="number" id="bet-amount" value="1" min="0.1" step="0.1">
+        <button class="btn-drop" id="btn-single" onclick="dropBall()">ทิ้งลูกบอล</button>
+        <button class="btn-auto" id="btn-auto" onclick="toggleAuto()">AUTO (รัวๆ)</button>
+    </div>
+
+    <canvas id="plinkoCanvas" width="700" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('plinkoCanvas');
+        const ctx = canvas.getContext('2d');
+
+        let balance = 100.00;
+        let autoInterval = null;
+        let isAuto = false;
+
+        // ตัวคูณและสีแกะมาจากรูปเป๊ะๆ (ซ้ายไปขวา)
+        const multipliers = [10000, 1000, 130, 26, 9, 4, 2, 1, 1, 1, 2, 4, 9, 26, 130, 1000, 10000];
+        const colors = [
+            '#ff00ff', '#ff0000', '#ff3300', '#ff6600', '#ff9900', '#ffcc00', '#ffff00', '#ccff00', '#ccff00',
+            '#ccff00', '#ffff00', '#ffcc00', '#ff9900', '#ff6600', '#ff3300', '#ff0000', '#ff00ff'
+        ];
+
+        const rows = 16;
+        const pins = [];
+        const startY = 60;
+        const spacingY = 28;
+
+        for (let r = 0; r < rows; r++) {
+            const count = r + 3;
+            const rowWidth = (count - 1) * 30;
+            const startX = (canvas.width - rowWidth) / 2;
+            for (let c = 0; c < count; c++) {
+                pins.push({ x: startX + c * 30, y: startY + r * spacingY });
+            }
+        }
+
+        let balls = [];
+
+        function dropBall() {
+            const betInput = document.getElementById('bet-amount');
+            let bet = parseFloat(betInput.value);
+
+            if (isNaN(bet) || bet <= 0) {
+                alert('กรุณาใส่ยอดเดิมพันที่ถูกต้อง');
+                stopAuto();
+                return;
+            }
+
+            if (balance < bet) {
+                if (isAuto) stopAuto();
+                alert('เงินหมดแล้วครับ! เติมกระสุนด่วน');
+                return;
+            }
+
+            balance -= bet;
+            updateUI();
+
+            balls.push({
+                x: canvas.width / 2 + (Math.random() * 6 - 3),
+                y: 20,
+                radius: 5,
+                currentRow: 0,
+                bet: bet,
+                targetX: canvas.width / 2
+            });
+        }
+
+        function toggleAuto() {
+            const btn = document.getElementById('btn-auto');
+            if (!isAuto) {
+                isAuto = true;
+                btn.classList.add('active');
+                btn.innerText = "หยุด AUTO";
+                // ปล่อยรัวๆ ทุก 0.08 วินาที (สะใจแน่นอน)
+                autoInterval = setInterval(dropBall, 80);
+            } else {
+                stopAuto();
+            }
+        }
+
+        function stopAuto() {
+            isAuto = false;
+            const btn = document.getElementById('btn-auto');
+            btn.classList.remove('active');
+            btn.innerText = "AUTO (รัวๆ)";
+            clearInterval(autoInterval);
+        }
+
+        function updateUI() {
+            document.getElementById('balance').innerText = balance.toFixed(2);
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // วาดพินหมุดขาว
+            ctx.fillStyle = '#ffffff';
+            pins.forEach(pin => {
+                ctx.beginPath();
+                ctx.arc(pin.x, pin.y, 3.5, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // วาดแถบรับเงินด้านล่าง
+            const bucketY = canvas.height - 45;
+            const bucketWidth = canvas.width / multipliers.length;
+
+            for (let i = 0; i < multipliers.length; i++) {
+                ctx.fillStyle = colors[i];
+                ctx.fillRect(i * bucketWidth + 1, bucketY, bucketWidth - 2, 40);
+                
+                ctx.fillStyle = '#000000';
+                ctx.font = 'bold 10px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(multipliers[i] + 'x', i * bucketWidth + bucketWidth / 2, bucketY + 24);
+            }
+
+            // คำนวณลูกบอล
+            for (let i = balls.length - 1; i >= 0; i--) {
+                let ball = balls[i];
+                let expectedY = startY + ball.currentRow * spacingY;
+
+                if (ball.y < expectedY) {
+                    ball.y += 4.5;
+                    ball.x += (ball.targetX - ball.x) * 0.25;
+                } else {
+                    if (ball.currentRow < rows) {
+                        const direction = Math.random() < 0.5 ? -1 : 1;
+                        ball.targetX += direction * 15;
+                        ball.currentRow++;
+                    } else {
+                        ball.y += 6;
+                    }
+                }
+
+                // วาดตัวลูกบอลส่องสว่าง
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                // เมื่อบอลลงหลุม
+                if (ball.y >= bucketY) {
+                    let bucketIndex = Math.floor(ball.x / bucketWidth);
+                    if (bucketIndex < 0) bucketIndex = 0;
+                    if (bucketIndex >= multipliers.length) bucketIndex = multipliers.length - 1;
+
+                    let winAmount = ball.bet * multipliers[bucketIndex];
+                    balance += winAmount;
+                    
+                    document.getElementById('last-win').innerText = winAmount.toFixed(2);
+                    document.getElementById('last-win').style.color = multipliers[bucketIndex] >= 9 ? '#4ecca3' : '#ff4141';
+                    
+                    updateUI();
+                    balls.splice(i, 1);
+                }
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        updateUI();
+        gameLoop();
+    </script>
+</body>
+</html>
